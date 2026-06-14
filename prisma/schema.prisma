@@ -1,0 +1,150 @@
+// Pharmacy POS — data model
+// Faithful to the original WinForms app's domain, but modernized:
+//  - money stored as integer cents (no float rounding bugs)
+//  - proper DateTime / Int types instead of varchar-for-everything
+//  - per-batch stock with expiry (FEFO selling), instead of a single net_stock total
+//  - all access goes through Prisma (parameterized) -> no SQL injection
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MANAGER
+  PHARMACIST
+}
+
+model User {
+  id           String   @id @default(cuid())
+  pfno         String   @unique // staff login number
+  firstName    String
+  lastName     String
+  role         Role     @default(PHARMACIST)
+  passwordHash String
+  phone        String?
+  email        String?
+  gender       String?
+  active       Boolean  @default(true)
+  tokenVersion Int      @default(0) // bump to invalidate all existing sessions
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  drugs     Drug[]
+  suppliers Supplier[]
+  stocks    Stock[]
+  sales     Sale[]
+  debtors   Debtor[]
+  events    AuditEvent[]
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  address   String?
+  location  String?
+  createdAt DateTime @default(now())
+
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+  createdById String?
+
+  stocks Stock[]
+}
+
+model Drug {
+  id        String   @id @default(cuid())
+  name      String
+  form      String // tablet, syrup, injection, ...
+  unit      String // mg, ml, pcs, ...
+  price     Int // current selling price, in cents
+  createdAt DateTime @default(now())
+
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+  createdById String?
+
+  stocks    Stock[]
+  saleItems SaleItem[]
+  debtors   Debtor[]
+}
+
+// A purchased batch of a drug. Availability for a drug = sum(remaining) of
+// its non-expired batches. Selling decrements batches FEFO (earliest expiry first).
+model Stock {
+  id           String   @id @default(cuid())
+  batchNo      String?
+  quantity     Int // quantity originally received
+  remaining    Int // quantity still on the shelf
+  buyingPrice  Int // cents
+  sellingPrice Int // cents
+  expiryDate   DateTime
+  createdAt    DateTime @default(now())
+
+  drug       Drug     @relation(fields: [drugId], references: [id], onDelete: Cascade)
+  drugId     String
+  supplier   Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierId String
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+  createdById String?
+}
+
+model Sale {
+  id        String   @id @default(cuid())
+  serial    String   @unique // receipt number
+  total     Int // cents
+  paid      Int // cents
+  discount  Int      @default(0) // cents
+  balance   Int // paid + discount - total (cents); positive = change
+  createdAt DateTime @default(now())
+
+  soldBy   User?   @relation(fields: [soldById], references: [id])
+  soldById String?
+
+  items SaleItem[]
+}
+
+model SaleItem {
+  id       String @id @default(cuid())
+  drugName String // denormalized snapshot at sale time
+  quantity Int
+  price    Int // unit price at sale time, cents
+  unit     String
+
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleId String
+  drug   Drug?  @relation(fields: [drugId], references: [id])
+  drugId String?
+}
+
+model Debtor {
+  name         String
+  id           String   @id @default(cuid())
+  phone        String
+  drugName     String // snapshot
+  quantity     Int
+  amountOwed   Int // cents (quantity * unit price at time of credit)
+  deposit      Int      @default(0) // cents already paid
+  settled      Boolean  @default(false)
+  dateBorrowed DateTime @default(now())
+  dueDate      DateTime?
+  createdAt    DateTime @default(now())
+
+  drug   Drug?   @relation(fields: [drugId], references: [id])
+  drugId String?
+  createdBy   User?   @relation(fields: [createdById], references: [id])
+  createdById String?
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  action      String // LOGIN, LOGOUT, SALE, STOCK_ADD, DEBTOR_ADD, ...
+  description String
+  createdAt   DateTime @default(now())
+
+  user   User?   @relation(fields: [userId], references: [id])
+  userId String?
+}
