@@ -114,4 +114,10 @@ prisma/
 
 ---
 
+## License
+
+Released under the [MIT License](LICENSE).
+
+---
+
 Built by **Seif Osman**.
