@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "./prisma";
 import type { Prisma } from "@prisma/client";
+import { allocateFEFO } from "./fefo";
 
 export const LOW_STOCK_THRESHOLD = 10;
 
@@ -71,26 +72,20 @@ export async function decrementStockFEFO(
   drugId: string,
   qty: number,
 ): Promise<void> {
-  if (qty <= 0) throw new Error("Quantity must be positive");
-
   const batches = await tx.stock.findMany({
     where: { drugId, remaining: { gt: 0 }, expiryDate: { gt: new Date() } },
     orderBy: { expiryDate: "asc" },
   });
 
-  const total = batches.reduce((sum, b) => sum + b.remaining, 0);
-  if (total < qty) {
-    throw new Error("INSUFFICIENT_STOCK");
-  }
+  // The actual FEFO decision (which batches, how much each) is pure logic
+  // and lives in lib/fefo.ts so it can be unit tested without a database.
+  const allocations = allocateFEFO(batches, qty);
 
-  let toDeduct = qty;
-  for (const b of batches) {
-    if (toDeduct <= 0) break;
-    const take = Math.min(b.remaining, toDeduct);
+  for (const { id, take } of allocations) {
+    const batch = batches.find((b) => b.id === id)!;
     await tx.stock.update({
-      where: { id: b.id },
-      data: { remaining: b.remaining - take },
+      where: { id },
+      data: { remaining: batch.remaining - take },
     });
-    toDeduct -= take;
   }
 }
