@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      # Both are required to build, and neither is a secret. Prisma resolves
+      # DATABASE_URL when the client is constructed, and lib/session refuses to start
+      # unless SESSION_SECRET is at least 32 characters — a deliberate fail-fast that
+      # would otherwise break the build with a confusing "failed to collect page data".
+      # SQLite keeps the job self-contained: no service container, nothing to wait for.
+      DATABASE_URL: "file:./ci.db"
+      SESSION_SECRET: "ci-only-value-not-a-secret-000000000000000000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` rather than `npm install`, deliberately: it is the only install that
+      # verifies the lockfile still matches package.json. That check is the whole point
+      # — this repo's lockfile had drifted out of sync and no clean install was possible
+      # until it was regenerated.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Create the database schema
+        run: npx prisma migrate deploy
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build

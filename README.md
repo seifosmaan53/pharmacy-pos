@@ -2,6 +2,8 @@
 
 > A modern, secure web-based Pharmacy Point-of-Sale & Inventory Management System.
 
+[![CI](https://github.com/seifosmaan53/pharmacy-pos/actions/workflows/ci.yml/badge.svg)](https://github.com/seifosmaan53/pharmacy-pos/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)](https://typescriptlang.org)

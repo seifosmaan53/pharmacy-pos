@@ -2,11 +2,16 @@
   "name": "pharmacy-pos",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx prisma/seed.ts",
     "db:reset": "prisma migrate reset --force"
