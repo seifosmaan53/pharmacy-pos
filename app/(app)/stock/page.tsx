@@ -41,7 +41,9 @@ export default async function StockPage() {
       <PageHeader
         title="Stock"
         subtitle="Received batches, sold first-expiry-first (FEFO)"
-        action={<AddStockButton drugs={drugs} suppliers={suppliers} />}
+        action={
+          user.role === "MANAGER" ? <AddStockButton drugs={drugs} suppliers={suppliers} /> : undefined
+        }
       />
       <Card>
         {batches.length === 0 ? (

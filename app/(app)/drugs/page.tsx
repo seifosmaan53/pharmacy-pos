@@ -30,7 +30,7 @@ export default async function DrugsPage() {
       <PageHeader
         title="Drugs"
         subtitle="Your medicine catalog and live stock levels"
-        action={<AddDrugButton />}
+        action={isManager ? <AddDrugButton /> : undefined}
       />
       <Card>
         {drugs.length === 0 ? (
@@ -70,7 +70,7 @@ export default async function DrugsPage() {
                   </Td>
                   <Td className="text-right">
                     <div className="flex justify-end gap-3">
-                      <EditDrugButton drug={d} />
+                      {isManager && <EditDrugButton drug={d} />}
                       {isManager && d.available <= 0 && (
                         <DeleteButton
                           id={d.id}
