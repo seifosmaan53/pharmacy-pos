@@ -144,16 +144,25 @@ npm run build
 npm run test:e2e
 ```
 
-It never touches `dev.db`: `e2e/setup-db.ts` recreates a throwaway `prisma/e2e.db` from the migrations and seeds synthetic users and fictional products, and the file is deleted when the run ends (set `E2E_KEEP_DB=1` to keep it). It covers sign-in, sign-out, a FEFO sale on the POS, oversell attempts caught by the client and by the server, receiving and deleting stock, and a pharmacist being denied manager-only sections, including a direct call to the manager-only delete Server Action. Each mutating workflow is checked with a direct Prisma query, and the sale, server-side oversell, stock receipt and deletion are also checked after a fresh page load. CI runs it in the `e2e` job.
+It never touches `dev.db`: `e2e/setup-db.ts` recreates a throwaway `prisma/e2e.db` from the migrations and seeds synthetic users and fictional products, and the file is deleted when the run ends (set `E2E_KEEP_DB=1` to keep it). It covers sign-in, sign-out, a FEFO sale on the POS, oversell attempts caught by the client and by the server, receiving and deleting stock, and a pharmacist being denied manager-only sections and seeing drugs and stock read-only, including direct calls to the manager-only delete, add-drug, edit-drug (price) and receive-stock Server Actions, each with a manager control. Each mutating workflow is checked with a direct Prisma query, and the sale, server-side oversell, stock receipt and deletion are also checked after a fresh page load. CI runs it in the `e2e` job.
 
-Debtors, drugs, suppliers, staff management and reports are not covered by browser tests yet.
+Debtors, suppliers, staff management and reports are not covered by browser tests yet.
 
 ---
 
 ## Roles
 
-- **Manager** — Full access: staff, suppliers, deletions, plus everything a pharmacist can do
+- **Manager** — Full access: staff, suppliers, adding and editing drugs (including selling prices), receiving stock, deletions, plus everything a pharmacist can do
 - **Pharmacist** — Point of sale, debtors, viewing drugs & stock, and reports
+
+Pharmacists cannot add or edit drugs or receive stock. They still lower stock
+indirectly by completing sales and recording debtor sales, which take units
+from the earliest-expiring batches. This follows the original WinForms system,
+where pharmacists signed in to a cashier home that offered sales, debtors,
+reports and view-only drug/stock screens, and the add/edit drug and add/edit
+stock screens were reached only from the manager home. The rule is enforced in the Server
+Actions (`requireManager`), not only by hiding buttons; the browser tests
+replay each manager-only action with a pharmacist's session.
 
 ---
 

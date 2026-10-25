@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { requireUser, requireManager } from "@/lib/guards";
+import { requireManager } from "@/lib/guards";
 import { toCents } from "@/lib/money";
 import { logEvent } from "@/lib/audit";
 
@@ -20,7 +20,7 @@ export async function createDrug(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const user = await requireUser();
+  const user = await requireManager();
   const parsed = DrugSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -37,7 +37,7 @@ export async function updateDrug(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  await requireUser();
+  await requireManager();
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Missing id" };
   const parsed = DrugSchema.safeParse(Object.fromEntries(formData));
