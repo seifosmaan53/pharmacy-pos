@@ -124,7 +124,7 @@ npm run dev                 # http://localhost:3000
 
 ## Testing
 
-There's no end-to-end test suite yet, but the pure business logic — the code most worth protecting from regressions — has unit tests under `lib/__tests__/`, run with [Vitest](https://vitest.dev):
+The pure business logic — the code most worth protecting from regressions — has unit tests under `lib/__tests__/`, run with [Vitest](https://vitest.dev):
 
 ```bash
 npm test
@@ -135,7 +135,18 @@ npm test
 
 `scripts/test-sale.mjs` is a separate, pre-existing integration check — it runs a real sale against the seeded database (verifies stock decrements correctly, the sale record persists, and totals match), then rolls back its own mutation. Run it against a seeded dev database with `node scripts/test-sale.mjs`.
 
-Nothing covers the UI (React components) or Server Actions end-to-end yet — the current suite is deliberately scoped to the logic where a bug would silently corrupt money or stock.
+### Browser tests
+
+`e2e/` holds a small [Playwright](https://playwright.dev) suite that drives the real UI in Chromium against a production build:
+
+```bash
+npm run build
+npm run test:e2e
+```
+
+It never touches `dev.db`: `e2e/setup-db.ts` recreates a throwaway `prisma/e2e.db` from the migrations and seeds synthetic users and fictional products, and the file is deleted when the run ends (set `E2E_KEEP_DB=1` to keep it). It covers sign-in, sign-out, a FEFO sale on the POS, an oversell attempt, receiving and deleting stock, and a pharmacist being denied manager-only sections. Each workflow is checked after a fresh page load and with a direct Prisma query. CI runs it in the `e2e` job.
+
+Debtors, drugs, suppliers, staff management and reports are not covered by browser tests yet.
 
 ---
 
@@ -157,6 +168,7 @@ app/
 lib/
   prisma · session · guards · inventory · fefo · money · dates · audit
   __tests__/        Vitest unit tests (money, fefo)
+e2e/                Playwright browser tests + throwaway DB setup
 prisma/
   schema.prisma · seed.ts · migrations/
 scripts/
