@@ -34,7 +34,13 @@ export default async function DrugsPage() {
       />
       <Card>
         {drugs.length === 0 ? (
-          <EmptyState message="No drugs yet. Add your first drug to get started." />
+          <EmptyState
+            message={
+              isManager
+                ? "No drugs yet. Add your first drug to get started."
+                : "No drugs yet. A manager adds drugs to the catalog."
+            }
+          />
         ) : (
           <Table>
             <thead>

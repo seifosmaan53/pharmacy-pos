@@ -155,10 +155,12 @@ Debtors, suppliers, staff management and reports are not covered by browser test
 - **Manager** — Full access: staff, suppliers, adding and editing drugs (including selling prices), receiving stock, deletions, plus everything a pharmacist can do
 - **Pharmacist** — Point of sale, debtors, viewing drugs & stock, and reports
 
-Pharmacists see drugs and stock read-only. This follows the original WinForms
-system, where pharmacists signed in to a cashier home that offered sales,
-debtors, reports and view-only drug/stock screens, and every drug or stock
-change was reached from the manager home. The rule is enforced in the Server
+Pharmacists cannot add or edit drugs or receive stock. They still lower stock
+indirectly by completing sales and recording debtor sales, which take units
+from the earliest-expiring batches. This follows the original WinForms system,
+where pharmacists signed in to a cashier home that offered sales, debtors,
+reports and view-only drug/stock screens, and the add/edit drug and add/edit
+stock screens were reached only from the manager home. The rule is enforced in the Server
 Actions (`requireManager`), not only by hiding buttons; the browser tests
 replay each manager-only action with a pharmacist's session.
 
