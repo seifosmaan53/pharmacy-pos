@@ -56,7 +56,7 @@ async function main() {
     const drugs = [
       { ...SALE_DRUG, batches: [SALE_DRUG.soonBatch, SALE_DRUG.lateBatch] },
       { ...RECEIVE_DRUG, batches: [RECEIVE_DRUG.batch] },
-      { ...DELETE_DRUG, batches: [DELETE_DRUG.batch] },
+      { ...DELETE_DRUG, batches: [DELETE_DRUG.batch, DELETE_DRUG.guardBatch] },
     ];
     for (const d of drugs) {
       await prisma.drug.create({

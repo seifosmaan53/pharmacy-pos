@@ -33,9 +33,11 @@ export const RECEIVE_DRUG = {
   batch: { batchNo: "E2E-QUE-1", qty: 20, days: 200 },
 };
 
-// One batch the manager deletes in the delete test.
+// One batch the manager deletes in the delete test, and one the role test
+// tries to delete by calling the Server Action directly.
 export const DELETE_DRUG = {
   name: "Brivolax 5mg",
   price: 300,
   batch: { batchNo: "E2E-BRI-1", qty: 8, days: 150 },
+  guardBatch: { batchNo: "E2E-BRI-GUARD", qty: 5, days: 150 },
 };

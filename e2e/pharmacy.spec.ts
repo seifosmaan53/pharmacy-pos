@@ -131,6 +131,41 @@ test.describe("point of sale", () => {
     expect(await prisma.sale.count()).toBe(salesBefore);
     expect(await availableOf(SALE_DRUG.name)).toBe(available);
   });
+
+  test("the server rejects a sale when stock ran out after it was added to the cart", async ({
+    page,
+  }) => {
+    // The test above only reaches the client-side check. Here the cart is valid
+    // when built, then another till takes one unit, so only the server-side
+    // check in completeSale/decrementStockFEFO can stop the sale.
+    const available = await availableOf(SALE_DRUG.name);
+    const salesBefore = await prisma.sale.count();
+    const late = { batchNo: SALE_DRUG.lateBatch.batchNo };
+
+    await login(page, PHARMACIST);
+    await page.goto("/pos");
+    await page.getByRole("button", { name: new RegExp(SALE_DRUG.name) }).click();
+    await page.getByLabel(`Quantity of ${SALE_DRUG.name}`).fill(String(available));
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByLabel("Amount paid").fill("1000");
+
+    await prisma.stock.updateMany({ where: late, data: { remaining: { decrement: 1 } } });
+    try {
+      await page.getByRole("button", { name: "Complete sale" }).click();
+      await expect(
+        page.getByText("Not enough stock for one or more items. Refresh and try again."),
+      ).toBeVisible();
+
+      await page.reload();
+      await expect(
+        page.getByRole("button", { name: new RegExp(SALE_DRUG.name) }),
+      ).toContainText(`${available - 1} pcs`);
+      expect(await prisma.sale.count()).toBe(salesBefore);
+      expect(await availableOf(SALE_DRUG.name)).toBe(available - 1);
+    } finally {
+      await prisma.stock.updateMany({ where: late, data: { remaining: { increment: 1 } } });
+    }
+  });
 });
 
 test.describe("stock", () => {
@@ -216,5 +251,53 @@ test.describe("role permissions", () => {
 
     expect(await prisma.user.count()).toBe(usersBefore);
     expect(await prisma.stock.count()).toBe(batchesBefore);
+  });
+
+  test("a pharmacist calling the delete Server Action directly is refused by the server", async ({
+    page,
+    browser,
+    baseURL,
+  }) => {
+    // Hiding the Delete button proves nothing on its own: Server Actions are
+    // reachable by direct POST. Capture the exact request a manager's Delete
+    // sends (stopped in the browser, so nothing is deleted), then replay it
+    // with a pharmacist's session.
+    const { batchNo } = DELETE_DRUG.guardBatch;
+    const where = { batchNo };
+    expect(await prisma.stock.count({ where })).toBe(1);
+
+    await login(page, MANAGER);
+    await page.goto("/stock");
+    let captured: { headers: Record<string, string>; body: Buffer } | undefined;
+    await page.route("**/stock", async (route) => {
+      const req = route.request();
+      if (req.method() !== "POST" || !req.headers()["next-action"]) return route.continue();
+      const all = await req.allHeaders();
+      const keep = ["next-action", "next-router-state-tree", "content-type", "accept", "origin"];
+      captured = {
+        headers: Object.fromEntries(keep.filter((h) => all[h]).map((h) => [h, all[h]])),
+        body: req.postDataBuffer()!,
+      };
+      await route.abort();
+    });
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("row", { name: new RegExp(batchNo) }).getByRole("button", { name: "Delete" }).click();
+    await expect.poll(() => captured).toBeDefined();
+    await page.unrouteAll();
+    expect(await prisma.stock.count({ where })).toBe(1);
+
+    const pharmacist = await browser.newContext({ baseURL });
+    try {
+      await login(await pharmacist.newPage(), PHARMACIST);
+      await pharmacist.request.post("/stock", { headers: captured!.headers, data: captured!.body });
+    } finally {
+      await pharmacist.close();
+    }
+    expect(await prisma.stock.count({ where })).toBe(1);
+
+    // Control: the same request with the manager's session does delete, so the
+    // replay really reaches deleteStock and the check above is not vacuous.
+    await page.request.post("/stock", { headers: captured!.headers, data: captured!.body });
+    expect(await prisma.stock.count({ where })).toBe(0);
   });
 });
