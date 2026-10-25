@@ -144,7 +144,7 @@ npm run build
 npm run test:e2e
 ```
 
-It never touches `dev.db`: `e2e/setup-db.ts` recreates a throwaway `prisma/e2e.db` from the migrations and seeds synthetic users and fictional products, and the file is deleted when the run ends (set `E2E_KEEP_DB=1` to keep it). It covers sign-in, sign-out, a FEFO sale on the POS, an oversell attempt, receiving and deleting stock, and a pharmacist being denied manager-only sections. Each workflow is checked after a fresh page load and with a direct Prisma query. CI runs it in the `e2e` job.
+It never touches `dev.db`: `e2e/setup-db.ts` recreates a throwaway `prisma/e2e.db` from the migrations and seeds synthetic users and fictional products, and the file is deleted when the run ends (set `E2E_KEEP_DB=1` to keep it). It covers sign-in, sign-out, a FEFO sale on the POS, oversell attempts caught by the client and by the server, receiving and deleting stock, and a pharmacist being denied manager-only sections, including a direct call to the manager-only delete Server Action. Each mutating workflow is checked with a direct Prisma query, and the sale, server-side oversell, stock receipt and deletion are also checked after a fresh page load. CI runs it in the `e2e` job.
 
 Debtors, drugs, suppliers, staff management and reports are not covered by browser tests yet.
 
