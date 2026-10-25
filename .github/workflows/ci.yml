@@ -56,3 +56,48 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  e2e:
+    # Browser tests in their own job so the existing checks above are unchanged
+    # and a browser-install hiccup can't mask a lint/type/unit failure.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      # Only for `next build`. The suite itself always uses its own throwaway
+      # database, prisma/e2e.db, created and seeded by e2e/setup-db.ts.
+      DATABASE_URL: "file:./ci.db"
+      SESSION_SECRET: "ci-only-value-not-a-secret-000000000000000000"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Browser tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
