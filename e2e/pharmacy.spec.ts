@@ -20,6 +20,33 @@ async function login(page: Page, user: { pfno: string; password: string }) {
   await expect(page).toHaveURL(/\/dashboard$/);
 }
 
+type CapturedAction = { headers: Record<string, string>; body: Buffer };
+
+/**
+ * Runs `trigger` as the signed-in user and captures the Server Action POST it
+ * sends to `path`, aborting it in the browser so nothing is written. Replaying
+ * the capture with another session tests the server-side check directly;
+ * hidden buttons prove nothing on their own.
+ */
+async function captureServerAction(page: Page, path: string, trigger: () => Promise<void>): Promise<CapturedAction> {
+  let captured: CapturedAction | undefined;
+  await page.route(`**${path}`, async (route) => {
+    const req = route.request();
+    if (req.method() !== "POST" || !req.headers()["next-action"]) return route.continue();
+    const all = await req.allHeaders();
+    const keep = ["next-action", "next-router-state-tree", "content-type", "accept", "origin"];
+    captured = {
+      headers: Object.fromEntries(keep.filter((h) => all[h]).map((h) => [h, all[h]])),
+      body: req.postDataBuffer()!,
+    };
+    await route.abort();
+  });
+  await trigger();
+  await expect.poll(() => captured).toBeDefined();
+  await page.unrouteAll();
+  return captured!;
+}
+
 async function availableOf(drugName: string) {
   const batches = await prisma.stock.findMany({
     where: { drug: { name: drugName }, expiryDate: { gt: new Date() } },
@@ -299,5 +326,100 @@ test.describe("role permissions", () => {
     // replay really reaches deleteStock and the check above is not vacuous.
     await page.request.post("/stock", { headers: captured!.headers, data: captured!.body });
     expect(await prisma.stock.count({ where })).toBe(0);
+  });
+  test("a pharmacist sees drugs and stock read-only: no add, edit or receive controls", async ({ page }) => {
+    await login(page, PHARMACIST);
+    await page.goto("/drugs");
+    await expect(page.getByRole("row", { name: new RegExp(SALE_DRUG.name) })).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ Add drug" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await page.goto("/stock");
+    await expect(page.getByRole("row", { name: new RegExp(SALE_DRUG.lateBatch.batchNo) })).toBeVisible();
+    await expect(page.getByRole("button", { name: "+ Receive stock" })).toHaveCount(0);
+  });
+
+  test("a pharmacist calling the add-drug Server Action directly is refused by the server", async ({ page, browser, baseURL }) => {
+    const name = "Capturol 20mg";
+    await login(page, MANAGER);
+    await page.goto("/drugs");
+    const captured = await captureServerAction(page, "/drugs", async () => {
+      await page.getByRole("button", { name: "+ Add drug" }).click();
+      await page.getByLabel("Drug name").fill(name);
+      await page.getByLabel("Unit (e.g. pcs, ml, mg)").fill("pcs");
+      await page.getByLabel("Selling price").fill("7.50");
+      await page.getByRole("button", { name: "Add drug", exact: true }).click();
+    });
+    expect(await prisma.drug.count({ where: { name } })).toBe(0);
+
+    const pharmacist = await browser.newContext({ baseURL });
+    try {
+      await login(await pharmacist.newPage(), PHARMACIST);
+      await pharmacist.request.post("/drugs", { headers: captured.headers, data: captured.body });
+    } finally {
+      await pharmacist.close();
+    }
+    expect(await prisma.drug.count({ where: { name } })).toBe(0);
+
+    // Control: the manager's replay creates the drug, so the replay reaches createDrug.
+    await page.request.post("/drugs", { headers: captured.headers, data: captured.body });
+    expect(await prisma.drug.count({ where: { name } })).toBe(1);
+  });
+
+  test("a pharmacist calling the edit-drug Server Action directly cannot change a price", async ({ page, browser, baseURL }) => {
+    const where = { name: RECEIVE_DRUG.name };
+    const before = (await prisma.drug.findFirstOrThrow({ where })).price;
+    await login(page, MANAGER);
+    await page.goto("/drugs");
+    const captured = await captureServerAction(page, "/drugs", async () => {
+      await page.getByRole("row", { name: new RegExp(RECEIVE_DRUG.name) }).getByRole("button", { name: "Edit" }).click();
+      await page.getByLabel("Selling price").fill("99.99");
+      await page.getByRole("button", { name: "Save changes" }).click();
+    });
+    expect((await prisma.drug.findFirstOrThrow({ where })).price).toBe(before);
+
+    const pharmacist = await browser.newContext({ baseURL });
+    try {
+      await login(await pharmacist.newPage(), PHARMACIST);
+      await pharmacist.request.post("/drugs", { headers: captured.headers, data: captured.body });
+    } finally {
+      await pharmacist.close();
+    }
+    expect((await prisma.drug.findFirstOrThrow({ where })).price).toBe(before);
+
+    // Control: the manager's replay changes the price.
+    await page.request.post("/drugs", { headers: captured.headers, data: captured.body });
+    expect((await prisma.drug.findFirstOrThrow({ where })).price).toBe(9999);
+  });
+
+  test("a pharmacist calling the receive-stock Server Action directly is refused by the server", async ({ page, browser, baseURL }) => {
+    const batchNo = "E2E-CAPTURED-RCV";
+    const expiry = new Date(Date.now() + 400 * 86_400_000).toISOString().slice(0, 10);
+    await login(page, MANAGER);
+    await page.goto("/stock");
+    const captured = await captureServerAction(page, "/stock", async () => {
+      await page.getByRole("button", { name: "+ Receive stock" }).click();
+      await page.getByLabel("Drug").selectOption({ label: SALE_DRUG.name });
+      await page.getByLabel("Supplier").selectOption({ label: SUPPLIER });
+      await page.getByLabel("Quantity").fill("5");
+      await page.getByLabel("Batch no.").fill(batchNo);
+      await page.getByLabel("Buying price").fill("1.00");
+      await page.getByLabel("Selling price").fill("2.00");
+      await page.getByLabel("Expiry date").fill(expiry);
+      await page.getByRole("button", { name: "Receive stock", exact: true }).click();
+    });
+    expect(await prisma.stock.count({ where: { batchNo } })).toBe(0);
+
+    const pharmacist = await browser.newContext({ baseURL });
+    try {
+      await login(await pharmacist.newPage(), PHARMACIST);
+      await pharmacist.request.post("/stock", { headers: captured.headers, data: captured.body });
+    } finally {
+      await pharmacist.close();
+    }
+    expect(await prisma.stock.count({ where: { batchNo } })).toBe(0);
+
+    // Control: the manager's replay receives the batch.
+    await page.request.post("/stock", { headers: captured.headers, data: captured.body });
+    expect(await prisma.stock.count({ where: { batchNo } })).toBe(1);
   });
 });
