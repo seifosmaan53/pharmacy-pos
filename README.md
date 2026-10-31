@@ -161,8 +161,10 @@ from the earliest-expiring batches. This follows the original WinForms system,
 where pharmacists signed in to a cashier home that offered sales, debtors,
 reports and view-only drug/stock screens, and the add/edit drug and add/edit
 stock screens were reached only from the manager home. The rule is enforced in the Server
-Actions (`requireManager`), not only by hiding buttons; the browser tests
-replay each manager-only action with a pharmacist's session.
+Actions (`requireManager`), not only by hiding buttons. The browser tests
+replay the add-drug, edit-drug, receive-stock and delete-stock actions with a
+pharmacist's session; the staff, supplier and delete-drug actions use the same
+guard but are not replayed by a test yet.
 
 ---
 
